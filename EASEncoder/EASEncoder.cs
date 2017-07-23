@@ -123,12 +123,12 @@ namespace EASEncoder
             GenerateMp3File();
         }
 
-        public static MemoryStream GetMemoryStreamFromNewMessage(EASMessage message, bool ebsTone = true,
-            bool nwsTone = false, string announcement = "")
+        public static MemoryStream GetMemoryStreamFromNewMessage(EASMessage message, bool ebsTone,
+            bool nwsTone, byte[] announcementStream)
         {
             _useEbsTone = ebsTone;
             _useNwsTone = nwsTone;
-            _announcement = announcement;
+            
 
             _headerSamples = new int[0];
             var byteArray = Encoding.Default.GetBytes(message.ToSameHeaderString());
@@ -203,10 +203,18 @@ namespace EASEncoder
                            (_nwstoneSamples*8);
 
             _announcementStream =
-                GenerateVoiceAnnouncement(announcement);
+                announcementStream;
             _announcementSamples = _announcementStream.Length;
 
             return GenerateMemoryStream();
+        }
+
+        public static MemoryStream GetMemoryStreamFromNewMessage(EASMessage message, bool ebsTone = true,
+            bool nwsTone = false, string announcement = "")
+        {
+
+            _announcement = announcement;
+            return GetMemoryStreamFromNewMessage(message,ebsTone,nwsTone,GenerateVoiceAnnouncement(announcement));
         }
 
         private static int[] RenderTone(SameWavBit byteSpec)
@@ -397,7 +405,7 @@ namespace EASEncoder
             }
 
             //Spoken announcement
-            if (!string.IsNullOrEmpty(_announcement))
+            if (_announcementSamples > 0)
             {
                 loopCount = 0;
                 while (loopCount < _announcementSamples)
@@ -495,6 +503,7 @@ namespace EASEncoder
             synthesizer.SetOutputToAudioStream(waveStream,
                 new SpeechAudioFormatInfo(EncodingFormat.Pcm,
                     44100, 16, 2, 176400, 2, null));
+           
             synthesizer.Volume = 100;
             synthesizer.Rate = 1;
             synthesizer.Speak(announcement);
