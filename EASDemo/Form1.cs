@@ -1,19 +1,19 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.ComponentModel;
-using System.IO;
-using System.Linq;
-using System.Reflection;
 using System.Windows.Forms;
 using EASEncoder.Models;
 using EASEncoder.Models.SAME;
 using NAudio.Wave;
+using IniParser;
+using IniParser.Model;
+using System.IO;
 
 namespace EASDemo
 {
     public partial class Form1 : Form
     {
-        private readonly List<SAMERegion> Regions = new List<SAMERegion>();
+        
+        private readonly List<AlertButton> AlertButtons = new List<AlertButton>();
         private string _length;
         private string _senderId;
         private DateTime _start;
@@ -24,83 +24,157 @@ namespace EASDemo
             InitializeComponent();
         }
 
-                private void Form1_Load(object sender, EventArgs e)
+        private void Form1_Load(object sender, EventArgs e)
         {
-            Regions.Add(new SAMERegion(new SAMEState(36, "NY"), new SAMECounty(5, "Bronx", new SAMEState(36, "NY"))));
-            Regions.Add(new SAMERegion(new SAMEState(36, "NY"), new SAMECounty(47, "Kings", new SAMEState(36, "NY"))));
-            Regions.Add(new SAMERegion(new SAMEState(36, "NY"), new SAMECounty(61, "New York", new SAMEState(36, "NY"))));
-            Regions.Add(new SAMERegion(new SAMEState(36, "NY"), new SAMECounty(81, "Queens", new SAMEState(36, "NY"))));
-            Regions.Add(new SAMERegion(new SAMEState(36, "NY"), new SAMECounty(85, "Richmond", new SAMEState(36, "NY"))));
+            IniData configdata;
+            try
+            {
+                configdata = (new FileIniDataParser()).ReadFile("alerts.ini");
+                int lastbuttonbottom = 0;
+                foreach (var section in configdata.Sections)
+                {
+                    List<SAMERegion> Regions = new List<SAMERegion>();
+                    foreach (var key in section.Keys)
+                    {
+                        if (key.KeyName.IndexOf("FIPS") == 0)
+                        {
+                            int fipsState = Convert.ToInt32(key.Value.Substring(1, 2));
+                            int fipsCounty = Convert.ToInt32(key.Value.Substring(3, 3));
+                            Regions.Add(new SAMERegion(new SAMEState(fipsState, ""), new SAMECounty(fipsCounty, "", new SAMEState(fipsState, ""))));
+                        }
+                    }
+                    string callsign;
+                    if (section.Keys["Callsign"].Length == 8)
+                    {
+                        callsign = section.Keys["Callsign"];
+                    }
+                    if (section.Keys["Callsign"].Length >8)
+                    {
+                        callsign = section.Keys["Callsign"].Substring(0, 8);
+                    }
+                    else
+                    {
+                        callsign = section.Keys["Callsign"].PadRight(8);
+                    }
+                    AlertButton newbutton = new AlertButton(player, section.Keys["Originator"], section.Keys["Event"], Regions, section.Keys["Length"], callsign, (section.Keys["Audio"] == "wav"), section.Keys["Announcement"],
+                        Convert.ToBoolean(section.Keys["Attn"]), Convert.ToBoolean(section.Keys["1050"]));
 
+                    AlertButtons.Add(newbutton);
+                    this.Controls.Add(newbutton.playbutton);
+                    newbutton.playbutton.Text = section.SectionName;
+                    newbutton.playbutton.Width = 255;
+                    newbutton.playbutton.Top = lastbuttonbottom + 8;
+                    lastbuttonbottom = newbutton.playbutton.Bottom;
+                    this.Height = lastbuttonbottom + 48;
+                    
+                }
+            }
+            catch
+            {
+                MessageBox.Show("Problem reading alerts.ini");
+            }
+                     
 
         }
 
-        private void playDemo (string originator, string eventCode, string audioText, bool attn, bool nwsTone)
+        class AlertButton
         {
-            if (player != null)
+            private WaveFileReader reader;
+            private WaveOutEvent player;
+            public Button playbutton;
+            private readonly List<SAMERegion> Regions = new List<SAMERegion>();
+            private string originator;
+            private string eventCode;
+            private string length;
+            private string senderId;
+            private string announcementText;
+            private byte[] announcementStream;
+            private bool announcementFromFile;
+            private bool attn;
+            private bool nwsTone;
+            private MemoryStream messagestream;
+            
+            public AlertButton(WaveOutEvent player, string originator, string eventCode, List<SAMERegion> Regions, string length, string senderId, bool announcementFromFile = false, string announcement = "", bool attnTone = false, bool nwsTone = false)
             {
-                player.Stop();
-                return;
+                this.originator = originator;
+                this.eventCode = eventCode;
+                this.Regions = Regions;
+                this.length = length;
+                this.senderId = senderId;
+                this.announcementFromFile = announcementFromFile;
+                this.player = player;
+                this.attn = attnTone;
+                this.nwsTone = nwsTone;
+
+                if (announcementFromFile)
+                {
+                    reader = new WaveFileReader(announcement);
+                    announcementStream = new byte[reader.Length];
+                    int read = reader.Read(announcementStream, 0, (int)reader.Length);
+                }
+                else
+                {
+                    announcementText = announcement;
+                }
+
+                playbutton = new Button();
+                playbutton.Click += Playbutton_Click;
+                
             }
 
-            
-
-            _start = DateTime.UtcNow;
-            _senderId = "EAS DEMO";
-            _length = "0500";
-
-            var newMessage = new EASMessage(originator, eventCode,
-                Regions, _length, _start, _senderId);
-
-
-            var messageStream = EASEncoder.EASEncoder.GetMemoryStreamFromNewMessage(newMessage, attn,
-                nwsTone, audioText);
-            //btnGeneratePlay.Text = "Stop Playing";
-            WaveStream mainOutputStream = new RawSourceWaveStream(messageStream, new WaveFormat());
-            var volumeStream = new WaveChannel32(mainOutputStream);
-            volumeStream.PadWithZeroes = false;
-
-            player = new WaveOutEvent();
-            player.PlaybackStopped += (o, args) =>
+            private void Playbutton_Click(object sender, EventArgs e)
             {
-                player.Dispose();
-                player = null;
-                //btnGeneratePlay.Text = "Generate && Play";
-            };
+                
+                if (player != null)
+                {
+                    player.Stop();
+                    return;
+                }
 
-            player.Init(volumeStream);
+                player = new WaveOutEvent();
 
-            player.Play();
-        }
+                WaveStream mainOutputStream = new RawSourceWaveStream(this.GetMemoryStream(), new WaveFormat());
+                var volumeStream = new WaveChannel32(mainOutputStream);
+                volumeStream.PadWithZeroes = false;
 
-        private void button1_Click(object sender, EventArgs e)
-        {
-            playDemo("EAS","RMT", "This is a coordinated monthly test of the broadcast stations of your area.  Equipment that can quickly warn you of emergencies is being tested. If this had been an actual emergency, an official message would have followed the alert tone.  This concludes this test of the Emergency Alert System.", true, false);
-        }
+                
 
-        private void button2_Click(object sender, EventArgs e)
-        {
-            playDemo("WXR", "TOR", "This is serious", false, true);
-        }
 
-        private void button3_Click(object sender, EventArgs e)
-        {
-            playDemo("CIV", "CEM", "This is serious.", true, false);
-        }
+                player.PlaybackStopped += (o, args) =>
+                {
+                    player.Dispose();
+                    player = null;
+                    
+                };
 
-        private void button4_Click(object sender, EventArgs e)
-        {
-            playDemo("PEP", "EAN", "President Obama.", true, false);
-        }
+                player.Init(volumeStream);
 
-        private void button5_Click(object sender, EventArgs e)
-        {
-            playDemo("EAS", "RWT", "", false, false);
-        }
+                player.Play();
+            }
 
-        private void button6_Click(object sender, EventArgs e)
-        {
-            playDemo("WXR", "SVR", "This is serious", false, true);
+            public EASMessage message()
+            {
+                EASMessage newmessage = new EASMessage(originator, eventCode, Regions, length, DateTime.UtcNow, senderId);
+                System.Diagnostics.Debug.Print(newmessage.ToSameHeaderString());
+                return newmessage;
+
+            }
+
+            public MemoryStream GetMemoryStream()
+            {
+                if (announcementFromFile)
+                {
+                    return EASEncoder.EASEncoder.GetMemoryStreamFromNewMessage(message(), attn, nwsTone, announcementStream);
+                }
+                else
+                {
+                    if (announcementText == null)
+                    {
+                        announcementText = "";
+                    }
+                    return EASEncoder.EASEncoder.GetMemoryStreamFromNewMessage(message(), attn, nwsTone, announcementText);
+                }
+            }
             
         }
     }
