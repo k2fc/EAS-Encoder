@@ -155,7 +155,6 @@ namespace EASDemo
             public EASMessage message()
             {
                 EASMessage newmessage = new EASMessage(originator, eventCode, Regions, length, DateTime.UtcNow, senderId);
-                System.Diagnostics.Debug.Print(newmessage.ToSameHeaderString());
                 return newmessage;
 
             }
