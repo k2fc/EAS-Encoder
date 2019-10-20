@@ -13,22 +13,23 @@ namespace EASEncoder
 {
     public static class EASEncoder
     {
-        private static readonly SAMEAudioBit Mark = new SAMEAudioBit(2083, (decimal) 0.00192);
-        private static readonly SAMEAudioBit Space = new SAMEAudioBit(1563, (decimal) 0.00192);
+        private static readonly SAMEAudioBit Mark = new SAMEAudioBit(2083, (decimal)0.00192);
+        private static readonly SAMEAudioBit Space = new SAMEAudioBit(1563, (decimal)0.00192);
+        private static WaveFormat _waveFormat = new WaveFormat(44100, 16, 2);
         private static int[] _headerSamples;
         private static int TotalHeaderSamples => _headerSamples.Length;
         private static List<int> _silenceSamples;
         private static int[] _eomSamples;
         private static int TotalEomSamples => _eomSamples.Length;
         private static byte[] _ebsTonesStream;
-        private static int _ebsToneSamples = 352800;
+        private static int _ebsToneSamples = _waveFormat.SampleRate * 8;
         private static byte[] _nwsTonesStream;
-        private static int _nwstoneSamples = 352800;
+        private static int _nwstoneSamples = _waveFormat.SampleRate * 8;
         private static byte[] _announcementStream;
         private static int _announcementSamples;
-        private static readonly int totalSilenceSamples = 176400;
-        
-        
+        private static readonly int totalSilenceSamples = _waveFormat.SampleRate * 4;
+
+
         private static int _totalSamples;
         private static bool _useEbsTone = true;
         private static bool _useNwsTone;
@@ -58,7 +59,7 @@ namespace EASEncoder
 
                 for (var e = 0; e < 8; e++)
                 {
-                    thisBit = ((thisByte & (short) Math.Pow(2, e)) != 0 ? Mark : Space);
+                    thisBit = ((thisByte & (short)Math.Pow(2, e)) != 0 ? Mark : Space);
                     byteSpec.Add(new SameWavBit(thisBit.frequency, thisBit.length, volume));
                 }
             }
@@ -85,7 +86,7 @@ namespace EASEncoder
 
                 for (var e = 0; e < 8; e++)
                 {
-                    thisBit = ((thisByte & (short) Math.Pow(2, e)) != 0 ? Mark : Space);
+                    thisBit = ((thisByte & (short)Math.Pow(2, e)) != 0 ? Mark : Space);
                     byteSpec.Add(new SameWavBit(thisBit.frequency, thisBit.length, volume));
                 }
             }
@@ -101,7 +102,7 @@ namespace EASEncoder
 
             //1 second silence
             _silenceSamples = new List<int>();
-            while (_silenceSamples.Count < 176400)
+            while (_silenceSamples.Count < totalSilenceSamples)
             {
                 _silenceSamples.Add(0);
             }
@@ -112,8 +113,8 @@ namespace EASEncoder
             _nwsTonesStream = GenerateNwsTones();
             _nwstoneSamples = _nwsTonesStream.Length;
 
-            _totalSamples = (TotalHeaderSamples*3) + (totalSilenceSamples*7) + (TotalEomSamples*3) + (_ebsToneSamples*8) +
-                           (_nwstoneSamples*8);
+            _totalSamples = (TotalHeaderSamples * 3) + (totalSilenceSamples * 7) + (TotalEomSamples * 3) + (_ebsToneSamples * 8) +
+                           (_nwstoneSamples * 8);
 
             _announcementStream =
                 GenerateVoiceAnnouncement(announcement);
@@ -126,9 +127,18 @@ namespace EASEncoder
         public static MemoryStream GetMemoryStreamFromNewMessage(EASMessage message, bool ebsTone,
             bool nwsTone, byte[] announcementStream)
         {
+            WaveFormat waveFormat = new WaveFormat(44100, 16, 2);
+            return GetMemoryStreamFromNewMessage(message, ebsTone, nwsTone, announcementStream, waveFormat);
+        }
+
+        public static MemoryStream GetMemoryStreamFromNewMessage(EASMessage message, bool ebsTone,
+            bool nwsTone, byte[] announcementStream, WaveFormat waveFormat)
+
+        {
+            _waveFormat = waveFormat;
             _useEbsTone = ebsTone;
             _useNwsTone = nwsTone;
-            
+
 
             _headerSamples = new int[0];
             var byteArray = Encoding.Default.GetBytes(message.ToSameHeaderString());
@@ -145,7 +155,7 @@ namespace EASEncoder
 
                 for (var e = 0; e < 8; e++)
                 {
-                    thisBit = ((thisByte & (short) Math.Pow(2, e)) != 0 ? Mark : Space);
+                    thisBit = ((thisByte & (short)Math.Pow(2, e)) != 0 ? Mark : Space);
                     byteSpec.Add(new SameWavBit(thisBit.frequency, thisBit.length, volume));
                 }
             }
@@ -172,7 +182,7 @@ namespace EASEncoder
 
                 for (var e = 0; e < 8; e++)
                 {
-                    thisBit = ((thisByte & (short) Math.Pow(2, e)) != 0 ? Mark : Space);
+                    thisBit = ((thisByte & (short)Math.Pow(2, e)) != 0 ? Mark : Space);
                     byteSpec.Add(new SameWavBit(thisBit.frequency, thisBit.length, volume));
                 }
             }
@@ -188,7 +198,7 @@ namespace EASEncoder
 
             //1 second silence
             _silenceSamples = new List<int>();
-            while (_silenceSamples.Count < 176400)
+            while (_silenceSamples.Count < totalSilenceSamples)
             {
                 _silenceSamples.Add(0);
             }
@@ -199,8 +209,8 @@ namespace EASEncoder
             _nwsTonesStream = GenerateNwsTones();
             _nwstoneSamples = _nwsTonesStream.Length;
 
-            _totalSamples = (TotalHeaderSamples*3) + (totalSilenceSamples*7) + (TotalEomSamples*3) + (_ebsToneSamples*8) +
-                           (_nwstoneSamples*8);
+            _totalSamples = (TotalHeaderSamples * 3) + (totalSilenceSamples * 7) + (TotalEomSamples * 3) + (_ebsToneSamples * 8) +
+                           (_nwstoneSamples * 8);
 
             _announcementStream =
                 announcementStream;
@@ -214,28 +224,28 @@ namespace EASEncoder
         {
 
             _announcement = announcement;
-            return GetMemoryStreamFromNewMessage(message,ebsTone,nwsTone,GenerateVoiceAnnouncement(announcement));
+            return GetMemoryStreamFromNewMessage(message, ebsTone, nwsTone, GenerateVoiceAnnouncement(announcement));
         }
 
         private static int[] RenderTone(SameWavBit byteSpec)
         {
             var computedSamples = new List<int>();
-            for (var i = 0; i < (44100*byteSpec.length); i++)
+            for (var i = 0; i < (_waveFormat.SampleRate * byteSpec.length); i++)
             {
-                    for (var c = 0; c < 2; c++)
+                for (var c = 0; c < 2; c++)
+                {
+                    var sample = (decimal)(byteSpec.volume * Math.Sin((2 * Math.PI) * (i / (double)_waveFormat.SampleRate) * byteSpec.frequency));
+                    if (headerByteCache.ContainsKey(sample))
                     {
-                        var sample = (decimal) (byteSpec.volume*Math.Sin((2*Math.PI)*(i/44100d)*byteSpec.frequency));
-                        if (headerByteCache.ContainsKey(sample))
-                        {
-                            computedSamples.AddRange(headerByteCache[sample]);
-                        }
-                        else
-                        {
-                            List<int> thisSample = PackBytes("v", sample);
-                            computedSamples.AddRange(thisSample);
-                            headerByteCache.Add(sample, thisSample);
-                        }
+                        computedSamples.AddRange(headerByteCache[sample]);
                     }
+                    else
+                    {
+                        List<int> thisSample = PackBytes("v", sample);
+                        computedSamples.AddRange(thisSample);
+                        headerByteCache.Add(sample, thisSample);
+                    }
+                }
 
             }
             return computedSamples.ToArray();
@@ -251,8 +261,8 @@ namespace EASEncoder
                 switch (c)
                 {
                     case 'v': // little-endian unsigned short
-                        output.Add(((int) arg & 255));
-                        output.Add((((int) arg >> 8) & 255));
+                        output.Add(((int)arg & 255));
+                        output.Add((((int)arg >> 8) & 255));
 
                         break;
                 }
@@ -280,18 +290,18 @@ namespace EASEncoder
 
         private static MemoryStream GenerateMemoryStream()
         {
-            _totalSamples = (TotalHeaderSamples*3) + (totalSilenceSamples*8) + (TotalEomSamples*3); //SAME Header & EOM
+            _totalSamples = (TotalHeaderSamples * 3) + (totalSilenceSamples * 8) + (TotalEomSamples * 3); //SAME Header & EOM
 
             //EBS Tone
             if (_useEbsTone)
             {
-                _totalSamples += (_ebsToneSamples*8) + totalSilenceSamples;
+                _totalSamples += (_ebsToneSamples * 8) + totalSilenceSamples;
             }
 
             //NWS Tone
             if (_useNwsTone)
             {
-                _totalSamples += (_nwstoneSamples*8) + totalSilenceSamples;
+                _totalSamples += (_nwstoneSamples * 8) + totalSilenceSamples;
             }
 
             //Spoken announcement
@@ -300,15 +310,15 @@ namespace EASEncoder
                 _totalSamples += _announcementSamples;
             }
 
-            uint sampleRate = 44100;
+            uint sampleRate = (uint)_waveFormat.SampleRate;
             ushort channels = 2;
             ushort bitsPerSample = 16;
-            var bytesPerSample = (ushort) (bitsPerSample/8);
+            var bytesPerSample = (ushort)(bitsPerSample / 8);
 
             var f = new MemoryStream();
             var wr = new BinaryWriter(f);
             wr.Write("RIFF".ToArray());
-            wr.Write(36 + _totalSamples*channels*bytesPerSample);
+            wr.Write(36 + _totalSamples * channels * bytesPerSample);
             wr.Write("WAVE".ToArray());
             //    // Sub-chunk 1.
             //    // Sub-chunk 1 ID.
@@ -316,7 +326,7 @@ namespace EASEncoder
             wr.Write(BitConverter.GetBytes(16), 0, 4);
 
             //    // Audio format (floating point (3) or PCM (1)). Any other format indicates compression.
-            wr.Write(BitConverter.GetBytes((ushort) (1)), 0, 2);
+            wr.Write(BitConverter.GetBytes((ushort)(1)), 0, 2);
 
             //    // Channels.
             wr.Write(BitConverter.GetBytes(channels), 0, 2);
@@ -325,10 +335,10 @@ namespace EASEncoder
             wr.Write(BitConverter.GetBytes(sampleRate), 0, 4);
 
             //    // Bytes rate.
-            wr.Write(BitConverter.GetBytes(sampleRate*channels*bytesPerSample), 0, 4);
+            wr.Write(BitConverter.GetBytes(sampleRate * channels * bytesPerSample), 0, 4);
 
             //    // Block align.
-            wr.Write(BitConverter.GetBytes(channels*bytesPerSample), 0, 2);
+            wr.Write(BitConverter.GetBytes(channels * bytesPerSample), 0, 2);
 
             //    // Bits per sample.
             wr.Write(BitConverter.GetBytes(bitsPerSample), 0, 2);
@@ -337,7 +347,7 @@ namespace EASEncoder
             wr.Write("data".ToArray());
 
             //    // Sub-chunk 2 size.
-            wr.Write(BitConverter.GetBytes(_totalSamples/channels*bytesPerSample));
+            wr.Write(BitConverter.GetBytes(_totalSamples / channels * bytesPerSample));
 
             foreach (var thisChar in _silenceSamples)
             {
@@ -354,7 +364,7 @@ namespace EASEncoder
 
                 foreach (var thisChar in _silenceSamples)
                 {
-                    wr.Write((byte) (thisChar));
+                    wr.Write((byte)(thisChar));
                 }
                 loopCount++;
             }
@@ -378,7 +388,7 @@ namespace EASEncoder
 
                 foreach (var thisChar in _silenceSamples)
                 {
-                    wr.Write((byte) (thisChar));
+                    wr.Write((byte)(thisChar));
                 }
             }
 
@@ -400,7 +410,7 @@ namespace EASEncoder
 
                 foreach (var thisChar in _silenceSamples)
                 {
-                    wr.Write((byte) (thisChar));
+                    wr.Write((byte)(thisChar));
                 }
             }
 
@@ -420,7 +430,7 @@ namespace EASEncoder
             {
                 foreach (var thisChar in _silenceSamples)
                 {
-                    wr.Write((byte) (thisChar));
+                    wr.Write((byte)(thisChar));
                 }
 
                 foreach (var thisChar in _eomSamples)
@@ -433,7 +443,7 @@ namespace EASEncoder
 
             foreach (var thisChar in _silenceSamples)
             {
-                wr.Write((byte) (thisChar));
+                wr.Write((byte)(thisChar));
             }
             wr.Flush();
             f.Position = 0;
@@ -444,23 +454,23 @@ namespace EASEncoder
         {
             var stream = new MemoryStream();
             var writer = new BinaryWriter(stream);
-            var samplesPerSecond = 44100;
-            var samples = samplesPerSecond*2;
+            var samplesPerSecond = _waveFormat.SampleRate;
+            var samples = samplesPerSecond * 2;
             double ampl = 5000;
             var concert = 1.0;
-            for (var i = 0; i < samples/2; i++)
+            for (var i = 0; i < samples / 2; i++)
             {
-                if (i%2 == 0)
+                if (i % 2 == 0)
                 {
-                    var t = i/(double) samplesPerSecond;
-                    var s = (short) (ampl*(Math.Sin(t*853.0*concert*2.0*Math.PI)));
+                    var t = i / (double)samplesPerSecond;
+                    var s = (short)(ampl * (Math.Sin(t * 853.0 * concert * 2.0 * Math.PI)));
                     writer.Write(s);
                     writer.Write(s);
                 }
                 else
                 {
-                    var t = i/(double) samplesPerSecond;
-                    var s = (short) (ampl*(Math.Sin(t*960.0*concert*2.0*Math.PI)));
+                    var t = i / (double)samplesPerSecond;
+                    var s = (short)(ampl * (Math.Sin(t * 960.0 * concert * 2.0 * Math.PI)));
                     writer.Write(s);
                     writer.Write(s);
                 }
@@ -474,14 +484,14 @@ namespace EASEncoder
         {
             var stream = new MemoryStream();
             var writer = new BinaryWriter(stream);
-            var samplesPerSecond = 44100;
-            var samples = samplesPerSecond*2;
+            var samplesPerSecond = _waveFormat.SampleRate;
+            var samples = samplesPerSecond * 2;
             double ampl = 5000;
             var concert = 1.0;
-            for (var i = 0; i < samples/2; i++)
+            for (var i = 0; i < samples / 2; i++)
             {
-                var t = i/(double) samplesPerSecond;
-                var s = (short) (ampl*(Math.Sin(t*1050.0*concert*2.0*Math.PI)));
+                var t = i / (double)samplesPerSecond;
+                var s = (short)(ampl * (Math.Sin(t * 1050.0 * concert * 2.0 * Math.PI)));
                 writer.Write(s);
                 writer.Write(s);
             }
@@ -502,8 +512,8 @@ namespace EASEncoder
                         .VoiceInfo.Name);
             synthesizer.SetOutputToAudioStream(waveStream,
                 new SpeechAudioFormatInfo(EncodingFormat.Pcm,
-                    44100, 16, 2, 176400, 2, null));
-           
+                    _waveFormat.SampleRate, _waveFormat.BitsPerSample, _waveFormat.Channels, _waveFormat.AverageBytesPerSecond, _waveFormat.BlockAlign, null));
+
             synthesizer.Volume = 100;
             synthesizer.Rate = 1;
             synthesizer.Speak(announcement);
