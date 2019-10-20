@@ -163,7 +163,8 @@ namespace EASDemo
             {
                 if (announcementFromFile)
                 {
-                    return EASEncoder.EASEncoder.GetMemoryStreamFromNewMessage(message(), attn, nwsTone, announcementStream);
+                    EASEncoder.EASEncoder encoder = new EASEncoder.EASEncoder(new WaveFormat());
+                    return encoder.GetMemoryStreamFromNewMessage(message(), attn, nwsTone, announcementStream);
                 }
                 else
                 {
@@ -171,7 +172,8 @@ namespace EASDemo
                     {
                         announcementText = "";
                     }
-                    return EASEncoder.EASEncoder.GetMemoryStreamFromNewMessage(message(), attn, nwsTone, announcementText);
+                    EASEncoder.EASEncoder encoder = new EASEncoder.EASEncoder(new WaveFormat());
+                    return encoder.GetMemoryStreamFromNewMessage(message(), attn, nwsTone, announcementText);
                 }
             }
             
