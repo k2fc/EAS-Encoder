@@ -110,7 +110,8 @@ namespace EASEncoder_Test_App
                 return;
             }
 
-            EASEncoder.EASEncoder.CreateNewMessage(newMessage, chkEbsTones.Checked, chkNwsTone.Checked,
+            EASEncoder.EASEncoder encoder = new EASEncoder.EASEncoder(new WaveFormat());
+            encoder.CreateNewMessage(newMessage, chkEbsTones.Checked, chkNwsTone.Checked,
                 formatAnnouncement(txtAnnouncement.Text));
         }
 
@@ -222,8 +223,8 @@ namespace EASEncoder_Test_App
             var newMessage = new EASMessage(_selectedOriginator.Id, _selectedAlertCode.Id,
                 Regions, _length, _start, _senderId);
 
-
-            var messageStream = EASEncoder.EASEncoder.GetMemoryStreamFromNewMessage(newMessage, chkEbsTones.Checked,
+            EASEncoder.EASEncoder encoder = new EASEncoder.EASEncoder(new WaveFormat());
+            var messageStream = encoder.GetMemoryStreamFromNewMessage(newMessage, chkEbsTones.Checked,
                 chkNwsTone.Checked, formatAnnouncement(txtAnnouncement.Text));
             btnGeneratePlay.Text = "Stop Playing";
             WaveStream mainOutputStream = new RawSourceWaveStream(messageStream, new WaveFormat());

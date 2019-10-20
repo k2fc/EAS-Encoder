@@ -11,33 +11,45 @@ using NAudio.Wave;
 
 namespace EASEncoder
 {
-    public static class EASEncoder
+    public class EASEncoder
     {
-        private static readonly SAMEAudioBit Mark = new SAMEAudioBit(2083, (decimal)0.00192);
-        private static readonly SAMEAudioBit Space = new SAMEAudioBit(1563, (decimal)0.00192);
-        private static WaveFormat _waveFormat = new WaveFormat(44100, 16, 2);
-        private static int[] _headerSamples;
-        private static int TotalHeaderSamples => _headerSamples.Length;
-        private static List<int> _silenceSamples;
-        private static int[] _eomSamples;
-        private static int TotalEomSamples => _eomSamples.Length;
-        private static byte[] _ebsTonesStream;
-        private static int _ebsToneSamples = _waveFormat.SampleRate * 8;
-        private static byte[] _nwsTonesStream;
-        private static int _nwstoneSamples = _waveFormat.SampleRate * 8;
-        private static byte[] _announcementStream;
-        private static int _announcementSamples;
-        private static readonly int totalSilenceSamples = _waveFormat.SampleRate * 4;
+        private readonly SAMEAudioBit Mark = new SAMEAudioBit(2083, (decimal)0.00192);
+        private readonly SAMEAudioBit Space = new SAMEAudioBit(1563, (decimal)0.00192);
+        private WaveFormat _waveFormat = new WaveFormat(44100, 16, 2);
+        private int[] _headerSamples;
+        private int TotalHeaderSamples => _headerSamples.Length;
+        private List<int> _silenceSamples;
+        private int[] _eomSamples;
+        private int TotalEomSamples => _eomSamples.Length;
+        private byte[] _ebsTonesStream;
+        private int _ebsToneSamples;// => _waveFormat.SampleRate * 8;
+        private byte[] _nwsTonesStream;
+        private int _nwstoneSamples;// => _waveFormat.SampleRate * 8;
+        private byte[] _announcementStream;
+        private int _announcementSamples;
+        private int totalSilenceSamples => _waveFormat.SampleRate * 4;
 
 
-        private static int _totalSamples;
-        private static bool _useEbsTone = true;
-        private static bool _useNwsTone;
-        private static string _announcement = string.Empty;
+        private int _totalSamples;
+        private bool _useEbsTone = true;
+        private bool _useNwsTone;
+        private bool _useEOM = true;
+        private string _announcement = string.Empty;
 
-        private static Dictionary<decimal, List<int>> headerByteCache = new Dictionary<decimal, List<int>>();
+        private decimal _EbsHighVolume = 1.0M;
+        private decimal _EbsLowVolume = 1.0M;
 
-        public static void CreateNewMessage(EASMessage message, bool ebsTone = true, bool nwsTone = false,
+        private Dictionary<decimal, List<int>> headerByteCache = new Dictionary<decimal, List<int>>();
+
+        public EASEncoder(WaveFormat waveFormat, decimal MarkVolume = 1.0M, decimal SpaceVolume = 1.0M, decimal EbsHighVolume = 1.0M, decimal EbsLowVolume = 1.0M)
+        {
+            _waveFormat = waveFormat;
+            Mark.level = MarkVolume;
+            Space.level = SpaceVolume;
+            _EbsHighVolume = EbsHighVolume;
+            _EbsLowVolume = EbsLowVolume;
+        }
+        public void CreateNewMessage(EASMessage message, bool ebsTone = true, bool nwsTone = false,
             string announcement = "")
         {
             //headerByteCache = new Dictionary<decimal, List<int>>();
@@ -124,21 +136,26 @@ namespace EASEncoder
             GenerateMp3File();
         }
 
-        public static MemoryStream GetMemoryStreamFromNewMessage(EASMessage message, bool ebsTone,
+        public MemoryStream GetMemoryStreamFromNewMessage(EASMessage message, bool ebsTone,
             bool nwsTone, byte[] announcementStream)
         {
             WaveFormat waveFormat = new WaveFormat(44100, 16, 2);
             return GetMemoryStreamFromNewMessage(message, ebsTone, nwsTone, announcementStream, waveFormat);
         }
 
-        public static MemoryStream GetMemoryStreamFromNewMessage(EASMessage message, bool ebsTone,
+        public MemoryStream GetMemoryStreamFromNewMessage(EASMessage message, bool ebsTone,
             bool nwsTone, byte[] announcementStream, WaveFormat waveFormat)
+        {
+            return GetMemoryStreamFromNewMessage(message, ebsTone, nwsTone, announcementStream, true);
+        }
+
+        public MemoryStream GetMemoryStreamFromNewMessage(EASMessage message, bool ebsTone,
+            bool nwsTone, byte[] announcementStream, bool eom)
 
         {
-            _waveFormat = waveFormat;
             _useEbsTone = ebsTone;
             _useNwsTone = nwsTone;
-
+            _useEOM = eom;
 
             _headerSamples = new int[0];
             var byteArray = Encoding.Default.GetBytes(message.ToSameHeaderString());
@@ -156,7 +173,7 @@ namespace EASEncoder
                 for (var e = 0; e < 8; e++)
                 {
                     thisBit = ((thisByte & (short)Math.Pow(2, e)) != 0 ? Mark : Space);
-                    byteSpec.Add(new SameWavBit(thisBit.frequency, thisBit.length, volume));
+                    byteSpec.Add(new SameWavBit(thisBit.frequency, thisBit.length, (int)(volume * thisBit.level)));
                 }
             }
 
@@ -171,30 +188,35 @@ namespace EASEncoder
             }
 
             _eomSamples = new int[0];
-            byteArray = Encoding.Default.GetBytes(message.ToSameEndOfMessageString());
-            volume = 5000;
-
-            byteSpec = new List<SameWavBit>();
-
-            foreach (var t in byteArray)
+            if (_useEOM)
             {
-                thisByte = t;
+                
+                byteArray = Encoding.Default.GetBytes(message.ToSameEndOfMessageString());
+                volume = 5000;
 
-                for (var e = 0; e < 8; e++)
+                byteSpec = new List<SameWavBit>();
+
+                foreach (var t in byteArray)
                 {
-                    thisBit = ((thisByte & (short)Math.Pow(2, e)) != 0 ? Mark : Space);
-                    byteSpec.Add(new SameWavBit(thisBit.frequency, thisBit.length, volume));
+                    thisByte = t;
+
+                    for (var e = 0; e < 8; e++)
+                    {
+                        thisBit = ((thisByte & (short)Math.Pow(2, e)) != 0 ? Mark : Space);
+                        byteSpec.Add(new SameWavBit(thisBit.frequency, thisBit.length, (int)(volume * thisBit.level)));
+                    }
+                }
+
+                foreach (var currentSpec in byteSpec)
+                {
+                    int[] returnedBytes = RenderTone(currentSpec);
+                    int[] c = new int[_eomSamples.Length + returnedBytes.Length];
+                    Array.Copy(_eomSamples, 0, c, 0, _eomSamples.Length);
+                    Array.Copy(returnedBytes, 0, c, _eomSamples.Length, returnedBytes.Length);
+                    _eomSamples = c;
                 }
             }
-
-            foreach (var currentSpec in byteSpec)
-            {
-                int[] returnedBytes = RenderTone(currentSpec);
-                int[] c = new int[_eomSamples.Length + returnedBytes.Length];
-                Array.Copy(_eomSamples, 0, c, 0, _eomSamples.Length);
-                Array.Copy(returnedBytes, 0, c, _eomSamples.Length, returnedBytes.Length);
-                _eomSamples = c;
-            }
+            
 
             //1 second silence
             _silenceSamples = new List<int>();
@@ -219,7 +241,7 @@ namespace EASEncoder
             return GenerateMemoryStream();
         }
 
-        public static MemoryStream GetMemoryStreamFromNewMessage(EASMessage message, bool ebsTone = true,
+        public MemoryStream GetMemoryStreamFromNewMessage(EASMessage message, bool ebsTone = true,
             bool nwsTone = false, string announcement = "")
         {
 
@@ -227,7 +249,7 @@ namespace EASEncoder
             return GetMemoryStreamFromNewMessage(message, ebsTone, nwsTone, GenerateVoiceAnnouncement(announcement));
         }
 
-        private static int[] RenderTone(SameWavBit byteSpec)
+        private int[] RenderTone(SameWavBit byteSpec)
         {
             var computedSamples = new List<int>();
             for (var i = 0; i < (_waveFormat.SampleRate * byteSpec.length); i++)
@@ -251,7 +273,7 @@ namespace EASEncoder
             return computedSamples.ToArray();
         }
 
-        private static List<int> PackBytes(string format, decimal sample)
+        private List<int> PackBytes(string format, decimal sample)
         {
             var output = new List<int>();
             foreach (var c in format)
@@ -270,7 +292,7 @@ namespace EASEncoder
             return output;
         }
 
-        private static void GenerateWavFile(string filename = "output")
+        private void GenerateWavFile(string filename = "output")
         {
             var f = new FileStream(filename + ".wav", FileMode.Create);
             using (var wr = new BinaryWriter(f))
@@ -280,7 +302,7 @@ namespace EASEncoder
             f.Close();
         }
 
-        private static void GenerateMp3File(string filename = "output")
+        private void GenerateMp3File(string filename = "output")
         {
 
             using (var reader = new WaveFileReader(GenerateMemoryStream()))
@@ -288,9 +310,14 @@ namespace EASEncoder
                 reader.CopyTo(writer);
         }
 
-        private static MemoryStream GenerateMemoryStream()
+        private MemoryStream GenerateMemoryStream()
         {
-            _totalSamples = (TotalHeaderSamples * 3) + (totalSilenceSamples * 8) + (TotalEomSamples * 3); //SAME Header & EOM
+            _totalSamples = (TotalHeaderSamples * 3) + (totalSilenceSamples * 4); //SAME Header
+
+            if (_useEOM)
+            {
+                _totalSamples += (TotalEomSamples * 3) + (totalSilenceSamples * 4);
+            }
 
             //EBS Tone
             if (_useEbsTone)
@@ -311,8 +338,8 @@ namespace EASEncoder
             }
 
             uint sampleRate = (uint)_waveFormat.SampleRate;
-            ushort channels = 2;
-            ushort bitsPerSample = 16;
+            ushort channels = (ushort)_waveFormat.Channels;
+            ushort bitsPerSample = (ushort)_waveFormat.BitsPerSample;
             var bytesPerSample = (ushort)(bitsPerSample / 8);
 
             var f = new MemoryStream();
@@ -450,7 +477,7 @@ namespace EASEncoder
             return f;
         }
 
-        private static byte[] GenerateEbsTones()
+        private byte[] GenerateEbsTones()
         {
             var stream = new MemoryStream();
             var writer = new BinaryWriter(stream);
@@ -463,14 +490,14 @@ namespace EASEncoder
                 if (i % 2 == 0)
                 {
                     var t = i / (double)samplesPerSecond;
-                    var s = (short)(ampl * (Math.Sin(t * 853.0 * concert * 2.0 * Math.PI)));
+                    var s = (short)(ampl * (double)_EbsLowVolume * (Math.Sin(t * 853.0 * concert * 2.0 * Math.PI)));
                     writer.Write(s);
                     writer.Write(s);
                 }
                 else
                 {
                     var t = i / (double)samplesPerSecond;
-                    var s = (short)(ampl * (Math.Sin(t * 960.0 * concert * 2.0 * Math.PI)));
+                    var s = (short)(ampl * (double)_EbsHighVolume * (Math.Sin(t * 960.0 * concert * 2.0 * Math.PI)));
                     writer.Write(s);
                     writer.Write(s);
                 }
@@ -480,7 +507,7 @@ namespace EASEncoder
             return stream.ToArray();
         }
 
-        private static byte[] GenerateNwsTones()
+        private byte[] GenerateNwsTones()
         {
             var stream = new MemoryStream();
             var writer = new BinaryWriter(stream);
@@ -500,7 +527,7 @@ namespace EASEncoder
             return stream.ToArray();
         }
 
-        private static byte[] GenerateVoiceAnnouncement(string announcement)
+        private byte[] GenerateVoiceAnnouncement(string announcement)
         {
             var synthesizer = new SpeechSynthesizer();
             var waveStream = new MemoryStream();
@@ -522,4 +549,6 @@ namespace EASEncoder
             return waveStream.ToArray();
         }
     }
+
+
 }
